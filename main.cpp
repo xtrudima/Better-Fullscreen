@@ -4,36 +4,72 @@
 
 using namespace fdm;
 
+struct Rect
+{
+	int x, y, w, h;
+};
+
+Rect oldWindowRect{0,0,0,0};
+
 // Initialize the DLLMain
 initDLL
 
-$hook(void, StateGame, init, StateManager& s)
+GLFWmonitor* getCurrentMonitor(GLFWwindow* window, bool fullscreenMode)
 {
-	// Your code that runs at first frame here (it calls when you load into the world)
+	if (!fullscreenMode)
+	{
+		return glfwGetWindowMonitor(window);
+	}
+	int count;
+	GLFWmonitor** monitors = glfwGetMonitors(&count);
 
-	original(self, s);
+	if (!count) return glfwGetPrimaryMonitor();
+
+	Rect windowArea{0,0,0,0};
+	glfwGetWindowPos(window, &windowArea.x, &windowArea.y);
+	glfwGetWindowSize(window, &windowArea.w, &windowArea.h);
+
+	for (int i = 0; i < count; i++)
+	{
+		GLFWmonitor* monitor = monitors[i];
+		Rect monitorArea{ 0,0,0,0 };
+		glfwGetMonitorWorkarea(monitor, &monitorArea.x, &monitorArea.y, &monitorArea.w, &monitorArea.h);
+		if (windowArea.x < monitorArea.x + monitorArea.w &&
+			windowArea.x + windowArea.w > monitorArea.x &&
+			windowArea.y < monitorArea.y + monitorArea.h &&
+			windowArea.y + windowArea.h > monitorArea.y)
+		{
+			return monitor;
+		}
+	}
+	return glfwGetPrimaryMonitor();
 }
 
-$hook(void, Player, update, World* world, double dt, EntityPlayer* entityPlayer)
+//		void setFullscreenMode(GLFWwindow* window, bool fullscreenMode) 
+$hook(void, StateSettings, setFullscreenMode, GLFWwindow* window, bool fullscreenMode)
 {
-	// Your code that runs every frame here (it only calls when you play in world, because its Player's function)
-
-	original(self, world, dt, entityPlayer);
-}
-
-$hook(bool, Player, keyInput, GLFWwindow* window, World* world, int key, int scancode, int action, int mods)
-{
-	// Your code that runs when Key Input happens (check GLFW Keyboard Input tutorials)|(it only calls when you play in world, because its Player's function)
-
-	return original(self, window, world, key, scancode, action, mods);
+	if (fullscreenMode)
+	{
+		glfwGetWindowPos(window, &oldWindowRect.x, &oldWindowRect.y);
+		glfwGetWindowSize(window, &oldWindowRect.w, &oldWindowRect.h);
+		GLFWmonitor* monitor = getCurrentMonitor(window, fullscreenMode);
+		const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+		glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+	}
+	else
+	{
+		glfwSetWindowMonitor(window, NULL, oldWindowRect.x, oldWindowRect.y, oldWindowRect.w, oldWindowRect.h, GLFW_DONT_CARE);
+	}
+	self->fullscreen = fullscreenMode;
+	self->fullscreenButton.setText(fullscreenMode ? "Exit Fullscreen" : "Enter Fullscreen");
 }
 
 $hook(void, StateIntro, init, StateManager& s)
 {
+	glfwInit();
 	original(self, s);
 
 	// initialize opengl stuff
 	glewExperimental = true;
 	glewInit();
-	glfwInit();
 }
